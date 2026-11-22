@@ -6,7 +6,7 @@
 ;;; so CONFINE-COMMAND / RUN-CONFINED do not apply (0.1.0). Sessions: session.lisp.
 ;;;
 ;;; Given (contract): the class, the constructor and readers, the features, the
-;;; BACKEND-CONFINE-ARGV refusal. Stubbed: CONFINEMENT-AVAILABLE-P.
+;;; BACKEND-CONFINE-ARGV refusal. Implemented (R4h-4a): CONFINEMENT-AVAILABLE-P.
 
 (defclass unkernel-backend (sc:confining-backend)
   ((node :initarg :node :initform nil
@@ -73,7 +73,20 @@ this order, the first failure giving the reason (a string):
   Node older than 24          → names the version found and \"Node 24\"
   HOST-CHECK fails            → its reason; every HOME problem names scripts/setup.sh
 Never signals for these: a reason is returned instead."
-  (%unkernel0-pending "confinement-available-p"))
+  (let ((probed (or (%backend-availability backend)
+                    (setf (%backend-availability backend) (%probe-availability backend)))))
+    (values (car probed) (cdr probed))))
+
+(defun %probe-availability (backend)
+  "→ (ok . reason), the checks of CONFINEMENT-AVAILABLE-P in order."
+  (if (uiop:os-windows-p)
+      (cons nil "compute-backend-unkernel does not run on Windows hosts (0.1.0): use a Unix host with Node 24+")
+      (multiple-value-bind (major reason) (probe-node (unkernel-backend-node backend))
+        (if (null major)
+            (cons nil reason)
+            (handler-case (progn (host-check backend) (cons t nil))
+              (sc:confinement-unavailable (e)
+                (cons nil (sc:confinement-unavailable-reason e))))))))
 
 (defmethod sc:backend-confine-argv ((backend unkernel-backend) confinement argv directory tmp)
   (declare (ignore confinement argv directory tmp))

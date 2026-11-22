@@ -23,10 +23,3 @@ the kernel failed to boot. A session whose host died is closed."))
              (format s "the unkernel session is closed~@[: ~a~]" (sc:compute-error-message c))))
   (:documentation "SESSION-EXEC, RUN-SANDBOXED or FORWARD-PORT on a session that was closed,
 or killed by a timeout or a host failure."))
-
-;;; Contract stubs (R4h-4a). Every call is replaced by the implementation; then this
-;;; definition is deleted.
-
-(defun %unkernel0-pending (what)
-  (error 'sc:compute-error
-         :message (format nil "R4h-4a pending: ~a (compute-backend-unkernel 0.1.0)" what)))
