@@ -1,0 +1,14 @@
+{
+  "name": "compute-backend-unkernel-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node host for compute-backend-unkernel: one unkernel kernel per process, newline JSON-RPC 2.0 on stdio",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "unkernel": "0.2.0-261121-e69adda"
+  }
+}

@@ -1,0 +1,66 @@
+(in-package #:compute-backend-unkernel/tests)
+
+;;; CLOSE-SANDBOX releases everything (live).
+
+(deflive close-releases (backend)
+  (with-tree (root area ro outside)
+    (let* ((before (stack-compute-dirs))
+           (s (sc:open-sandbox backend (area-spec area :network :allow)))
+           (pid (unkernel-session-pid s))
+           (tmp (plan-tmp (unkernel-session-plan s))))
+      (ok (uiop:directory-exists-p tmp))
+      (sh s "nohup nc -l -p 7070 -e cat > /dev/null 2>&1 &")
+      (let ((port (forward-port s 7070)))
+        (ok (eq t (sc:close-sandbox s)) "T the first time")
+        (ok (null (sc:close-sandbox s)) "then NIL")
+        (ok (not (unkernel-session-alive-p s)))
+        (ok (wait-until (lambda () (not (pid-alive-p pid))) 10) "the host process exited")
+        (ok (not (uiop:directory-exists-p tmp)) "the private temp dir is deleted")
+        (ok (not (tcp-connect-p port)) "the forward is closed")
+        (ok (null (unkernel-session-forwards s))))
+      (ok (equal before (stack-compute-dirs)) "nothing left in the temp dir")
+      (ok (signals (sh s "true") 'unkernel-session-closed))
+      (ok (signals (forward-port s 7070) 'unkernel-session-closed)))))
+
+(deflive close-on-non-local-exit (backend)
+  (let (session)
+    (block out
+      (sc:with-sandbox (s backend '("true"))
+        (setf session s)
+        (return-from out)))
+    (ok (not (unkernel-session-alive-p session)))
+    (ok (wait-until (lambda () (not (pid-alive-p (unkernel-session-pid session)))) 10))))
+
+(deflive close-after-error (backend)
+  (let (session)
+    (ok (signals (sc:with-sandbox (s backend '("true"))
+                   (setf session s)
+                   (error "boom"))
+                 'simple-error))
+    (ok (not (unkernel-session-alive-p session)))))
+
+(deflive close-many-sessions-leave-nothing (backend)
+  (let ((before (stack-compute-dirs))
+        (pids '()))
+    (dotimes (i 3)
+      (with-session (s backend nil)
+        (push (unkernel-session-pid s) pids)
+        (ok (eql 0 (sh s "true")))))
+    (ok (wait-until (lambda () (notany #'pid-alive-p pids)) 10) "every host process exited")
+    (ok (equal before (stack-compute-dirs)))))
+
+(deflive close-host-killed-from-outside (backend)
+  ;; The host dying under a session: the next call is an UNKERNEL-ERROR (or, once the
+  ;; death was noticed, UNKERNEL-SESSION-CLOSED) and the session is closed.
+  (let ((s (sc:open-sandbox backend nil)))
+    (unwind-protect
+         (progn
+           (pp:run (list "kill" "-KILL" (princ-to-string (unkernel-session-pid s)))
+                   :output :string :error-output :string)
+           (sleep 1)
+           (ok (handler-case (progn (sh s "true") nil)
+                 (unkernel-error () t)
+                 (unkernel-session-closed () t)))
+           (ok (not (unkernel-session-alive-p s)))
+           (ok (not (uiop:directory-exists-p (plan-tmp (unkernel-session-plan s))))))
+      (sc:close-sandbox s))))
