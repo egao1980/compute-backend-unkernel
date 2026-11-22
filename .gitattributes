@@ -1,0 +1,7 @@
+# Sources and the Node host stay LF on every checkout (Windows CI checks out
+# CRLF otherwise): FORMAT ~<newline> must not see a CR, and the host's
+# package-lock.json is pinned byte for byte.
+*.lisp text eol=lf
+*.asd text eol=lf
+*.sh text eol=lf
+host/** text eol=lf
