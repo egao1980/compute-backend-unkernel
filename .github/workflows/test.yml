@@ -8,5 +8,61 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Canned matrix (Linux in the ci-base container, macOS, Windows): the pure and
+  # every-OS tests run; live tests skip with the availability reason (no Node 24
+  # or no scripts/setup.sh there); Windows skips every live test (0.1.0).
   test:
     uses: egao1980/cl-repository/.github/workflows/test-system.yml@main
+
+  # R4h-4a verdict: the live tests on the macOS and Ubuntu VMs with Node and a
+  # set-up HOME. COMPUTE_UNKERNEL_CI=1 turns "unavailable here, skip" into a
+  # failure. The canned workflow cannot install Node, hence this job (as
+  # compute-backend-landlock's linux-confinement job).
+  unkernel:
+    name: unkernel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04]
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      COMPUTE_UNKERNEL_CI: "1"
+      COMPUTE_UNKERNEL_HOME: ${{ github.workspace }}/../unkernel-home
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.1"
+
+      # HOME (npm modules, the pinned distro, the guest disk) depends only on the
+      # pinned host files and the setup script.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/../unkernel-home
+          key: unkernel-home-${{ runner.os }}-${{ hashFiles('host/package.json', 'host/package-lock.json', 'scripts/setup.sh', 'src/pins.lisp') }}
+
+      - name: Set up unkernel (scripts/setup.sh)
+        run: |
+          node --version
+          sh scripts/setup.sh "$COMPUTE_UNKERNEL_HOME"
+
+      - uses: egao1980/cl-repository/.github/actions/setup-lisp@main
+
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: install
+          system: compute-backend-unkernel
+
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: test
+          system: compute-backend-unkernel
